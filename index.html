@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Pavement widths, Westminster</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="vendor/maplibre-gl.css" rel="stylesheet">
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/deck.gl.min.js"></script>
+<script src="vendor/proj4.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; background: #111; font: 13px/1.4 "Segoe UI", system-ui, -apple-system, sans-serif; color: #ddd; }
+  [hidden] { display: none !important; }
+  #map { position: absolute; inset: 0; }
+  #panel { position: absolute; top: 12px; left: 12px; box-sizing: border-box; width: min(320px, calc(100vw - 76px)); background: rgba(20, 20, 24, .92);
+           border: 1px solid #333; border-radius: 8px; padding: 10px 14px 12px; box-shadow: 0 2px 12px rgba(0,0,0,.5); z-index: 20; }
+  #panel a { color: #b9d4b3; }
+  .links { display: flex; gap: 14px; font-size: 12px; margin-bottom: 8px; }
+  .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  h1 { font-size: 15px; margin: 0 0 2px; color: #fff; }
+  button { font: inherit; color: #ddd; background: #26262b; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
+  button:hover { background: #303036; }
+  button:focus-visible, .handle:focus-visible { outline: 2px solid #b9d4b3; outline-offset: 1px; }
+  #collapse { padding: 1px 7px; font-size: 12px; flex: none; }
+  .sub { color: #999; margin-bottom: 10px; }
+  .showing { display: flex; justify-content: space-between; align-items: baseline; min-height: 22px; }
+  .showing b { color: #fff; font-weight: 600; }
+  #reset { padding: 1px 8px; font-size: 12px; }
+  #range { position: relative; margin-top: 6px; cursor: ew-resize; touch-action: none; user-select: none; }
+  #hist { display: block; width: 100%; height: 44px; }
+  #track { position: relative; height: 12px; margin-top: 2px; }
+  #ramp { position: absolute; inset: 0; border-radius: 3px; }
+  .shade { position: absolute; top: 0; bottom: 0; background: rgba(20, 20, 24, .82); }
+  #shLo { left: 0; border-radius: 3px 0 0 3px; }
+  #shHi { right: 0; border-radius: 0 3px 3px 0; }
+  .handle { position: absolute; top: -5px; width: 22px; height: 22px; margin-left: -11px; border-radius: 4px; }
+  .handle::after { content: ""; position: absolute; left: 8px; top: 0; width: 6px; height: 22px; border-radius: 3px;
+                   background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.6); }
+  #ticks { display: flex; justify-content: space-between; color: #aaa; font-size: 11px; margin-top: 7px; }
+  #status { margin-top: 10px; color: #aaa; }
+  #coords { margin-top: 10px; color: #888; font-size: 12px; }
+  #panel #method { display: block; margin-top: 12px; padding: 8px 10px; border-radius: 6px; background: #4a7043; color: #fff;
+                   font-weight: 600; text-align: center; text-decoration: none; }
+  #panel #method:hover { background: #55804d; }
+  #panel #method:focus-visible { outline: 2px solid #b9d4b3; outline-offset: 2px; }
+  #panel.collapsed .extra { display: none; }
+  #tip { position: absolute; pointer-events: none; background: rgba(20,20,24,.95); border: 1px solid #444; border-radius: 6px;
+         padding: 6px 9px; display: none; z-index: 30; white-space: nowrap; }
+  #tip b { color: #fff; font-size: 15px; }
+  #tip .st { color: #aaa; }
+  #dim { position: absolute; inset: 0; background: rgba(0, 0, 0, .6); pointer-events: none; }
+  .maplibregl-ctrl-group, .maplibregl-ctrl-group:not(:empty) { background: rgba(20, 20, 24, .92); border: 1px solid #333;
+                                                               box-shadow: 0 2px 12px rgba(0,0,0,.5); }
+  .maplibregl-ctrl-group button + button { border-top: 1px solid #333; }
+  .maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: invert(1) brightness(.87); }
+  .maplibregl-ctrl-group button:not(:disabled):hover { background-color: rgba(255, 255, 255, .1); }
+  .maplibregl-ctrl-attrib { background: rgba(20,20,24,.8) !important; color: #aaa; }
+  .maplibregl-ctrl-attrib a { color: #ccc; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <div class="head">
+    <h1>Pavement widths, Westminster</h1>
+    <button id="collapse" type="button" aria-expanded="true" aria-label="Hide panel details">Hide</button>
+  </div>
+  <div class="sub extra">Kerb to back of footway, one slice per metre of kerb</div>
+  <div class="showing"><span>Showing <b id="showing">all widths</b></span><button id="reset" type="button" hidden>Reset</button></div>
+  <div id="range">
+    <canvas id="hist" class="extra" role="img" aria-label="Share of kerb length at each width"></canvas>
+    <div id="track">
+      <div id="ramp"></div>
+      <div class="shade" id="shLo"></div><div class="shade" id="shHi"></div>
+      <div class="handle" id="hLo" role="slider" tabindex="0" aria-label="Narrowest width shown, metres" aria-valuemin="0" aria-valuemax="7"></div>
+      <div class="handle" id="hHi" role="slider" tabindex="0" aria-label="Widest width shown, metres" aria-valuemin="0" aria-valuemax="7"></div>
+    </div>
+    <div id="ticks"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7 m+</span></div>
+  </div>
+  <div id="status">Loading map data…</div>
+  <div id="coords" class="extra">Drag the handles to filter.</div>
+  <a id="method" href="method/">How this map was made &rarr;</a>
+</div>
+<div id="tip"></div>
+<script>
+// ---- colour ramp: narrow (red) -> wide (blue), fixed stops in metres ----
+const STOPS = [[0.0, [165, 0, 38]], [1.0, [215, 48, 39]], [1.5, [244, 109, 67]], [2.0, [253, 174, 97]],
+               [2.5, [254, 224, 139]], [3.0, [230, 245, 152]], [4.0, [153, 213, 148]], [5.0, [102, 194, 165]],
+               [6.0, [50, 136, 189]]];
+const TOP = 7;   // the legend / filter scale runs 0..TOP metres; the top end means "no upper limit"
+function rampColor(w) {
+  if (w <= STOPS[0][0]) return STOPS[0][1];
+  for (let i = 1; i < STOPS.length; i++) {
+    if (w <= STOPS[i][0]) {
+      const [w0, c0] = STOPS[i - 1], [w1, c1] = STOPS[i], t = (w - w0) / (w1 - w0);
+      return [c0[0] + (c1[0] - c0[0]) * t, c0[1] + (c1[1] - c0[1]) * t, c0[2] + (c1[2] - c0[2]) * t];
+    }
+  }
+  return STOPS[STOPS.length - 1][1];
+}
+document.getElementById('ramp').style.background = 'linear-gradient(to right, ' +
+  STOPS.map(([w, c]) => `rgb(${c.join(',')}) ${w / TOP * 100}%`).join(', ') + ')';
+
+// ---- basemap ----
+// Always opens fitted to the extent of the data (header.bounds of the data file), centred in the part of the screen
+// the panel doesn't cover: beside it on wide screens, below it on phones. The view is not kept in the URL.
+const DATA_BOUNDS = [[-0.21604, 51.48496], [-0.10798, 51.53979]];
+const PHONE = window.matchMedia('(max-width: 560px)').matches;
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  bounds: DATA_BOUNDS,
+  fitBoundsOptions: {padding: PHONE ? {top: 130, right: 12, bottom: 40, left: 12} : {top: 24, right: 56, bottom: 40, left: 356}},
+  minZoom: 10, maxZoom: 20,
+  attributionControl: false
+});
+map.addControl(new maplibregl.AttributionControl({
+  compact: false,
+  customAttribution: 'Contains OS data © Crown copyright and database rights 2026'
+}));
+map.addControl(new maplibregl.NavigationControl({showCompass: false}), 'top-right');
+
+// ---- right-click: copy "lat, lon" to the clipboard, show it with the British National Grid position (Helmert, ~1-2 m) ----
+const BNG = '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489 +units=m +no_defs';
+document.getElementById('map').addEventListener('contextmenu', e => e.preventDefault());
+map.on('contextmenu', e => {
+  const {lng, lat} = e.lngLat;
+  const text = `${lat.toFixed(7)}, ${lng.toFixed(7)}`;
+  let en = '';
+  try { const [x, y] = proj4('EPSG:4326', BNG, [lng, lat]); en = ` · E ${x.toFixed(1)} N ${y.toFixed(1)}`; } catch (_) {}
+  const show = note => { document.getElementById('coords').textContent = text + en + ' — ' + note; };
+  show('copying…');
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => show('lat, lon copied'), () => show('clipboard blocked (select the text)'));
+  else show('no clipboard API');
+});
+
+// ---- binary slices ----
+let overlay, D = null, lo = 0, hi = TOP;
+const status = document.getElementById('status'), tip = document.getElementById('tip');
+
+function parseBin(buf) {
+  const hlen = new DataView(buf).getUint32(0, true);
+  const h = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, hlen)));
+  const ctor = {Float32: Float32Array, Uint32: Uint32Array, Uint16: Uint16Array, Int32: Int32Array, Int16: Int16Array};
+  const a = {};
+  for (const [name, d] of Object.entries(h.arrays)) a[name] = new ctor[d.type](buf, d.offset, d.length);
+  return {h, a};
+}
+
+// Format version 2 (the compact file, written by compact_arrays in 07_export_binary.py) stores each polygon as a
+// vertex count, its first vertex as a step from the previous polygon's first vertex, and every other vertex as a
+// step from the one before it, all in whole units of header.unit degrees; the closing vertex is left out and
+// widths are whole centimetres. This rebuilds what the rest of the page expects: XYZ float positions (D.p3),
+// startIndices of closed rings, and widths in metres with -1 for "no value".
+function expandCompact(D) {
+  const {h, a} = D, n = h.n, nv = h.nVertices, [ux, uy] = h.unit, counts = a.counts, firsts = a.firsts, steps = a.steps;
+  const p3 = new Float32Array(nv * 3), start = new Uint32Array(n + 1);
+  let fx = 0, fy = 0, v = 0, k = 0;
+  for (let p = 0; p < n; p++) {
+    fx += firsts[p * 2]; fy += firsts[p * 2 + 1];
+    start[p] = v;
+    let x = fx, y = fy;
+    p3[v * 3] = x * ux; p3[v * 3 + 1] = y * uy; v++;
+    for (let j = 1; j < counts[p]; j++) {
+      x += steps[k++]; y += steps[k++];
+      p3[v * 3] = x * ux; p3[v * 3 + 1] = y * uy; v++;
+    }
+    p3[v * 3] = fx * ux; p3[v * 3 + 1] = fy * uy; v++;   // close the ring
+  }
+  start[n] = v;
+  if (v !== nv || k !== steps.length) throw new Error('compact data does not match its header');
+  const metres = cm => { const o = new Float32Array(n); for (let i = 0; i < n; i++) o[i] = cm[i] === 65535 ? -1 : cm[i] / 100; return o; };
+  D.p3 = p3; a.startIndices = start; a.width = metres(a.width); a.min5 = metres(a.min5);
+}
+
+// deck.gl binary attributes for polygon layers are PER VERTEX (startIndices only says where each polygon's run
+// of vertices begins). The file stores per-polygon values, so expand colour and filter value once on load.
+// Also bins kerb length by width for the histogram: 0.1 m bins, the last one collecting everything from TOP - 0.1 m up.
+function buildData() {
+  const n = D.h.n, nv = D.h.nVertices, s = D.a.startIndices, val = D.a.width;
+  const vcol = new Uint8Array(nv * 4), vw = new Float32Array(nv), hist = new Float64Array(TOP * 10);
+  for (let p = 0; p < n; p++) {
+    const w = val[p], c = w < 0 ? [90, 90, 90] : rampColor(w);
+    for (let v = s[p]; v < s[p + 1]; v++) {
+      vcol[v * 4] = c[0]; vcol[v * 4 + 1] = c[1]; vcol[v * 4 + 2] = c[2]; vcol[v * 4 + 3] = 255;
+      vw[v] = w;
+    }
+    if (w >= 0) hist[Math.min(hist.length - 1, Math.floor(w * 10))] += D.a.count ? D.a.count[p] : 1;
+  }
+  const attributes = {getPolygon: {value: D.p3, size: 3},
+                      getFillColor: {value: vcol, size: 4, normalized: true},
+                      getFilterValue: {value: vw, size: 1}};
+  // Triangles precomputed by tools/add_triangle_indices.mjs: with _normalize false, deck.gl uses them as-is and
+  // skips its own earcut pass over every polygon. Files without them still work (deck.gl triangulates on load).
+  if (D.a.indices) attributes.indices = D.a.indices;
+  D.data = {length: n, startIndices: s, attributes};
+  D.hist = hist;
+}
+
+// One SolidPolygonLayer fed binary attributes. D.data is built ONCE and reused by reference:
+// deck.gl then never re-tessellates or re-uploads when the handles move - only the filterRange uniform of the
+// DataFilterExtension changes, and the GPU drops polygons outside the range in the vertex shader.
+function makeLayer() {
+  return new deck.SolidPolygonLayer({
+    id: 'slices',
+    data: D.data,
+    _normalize: false, positionFormat: 'XYZ',
+    coordinateSystem: deck.COORDINATE_SYSTEM.LNGLAT_OFFSETS, coordinateOrigin: [D.h.origin[0], D.h.origin[1], 0],
+    extensions: [new deck.DataFilterExtension({filterSize: 1})],
+    filterRange: [lo, hi >= TOP ? 1e6 : hi],
+    pickable: true, autoHighlight: true, highlightColor: [255, 255, 255, 120],
+    opacity: 0.85, parameters: {depthTest: false}
+  });
+}
+
+function fmt(w) { return w < 0 ? 'n/a' : w.toFixed(2) + ' m'; }
+
+function showTip({index, x, y}) {
+  if (index < 0 || index === undefined) { tip.style.display = 'none'; return; }
+  tip.innerHTML = `<b>${fmt(D.a.width[index])}</b> wide here<br>` +
+                  (D.a.min5 ? `${fmt(D.a.min5[index])} narrowest within 5 m<br>` : '') +
+                  `<span class="st">${D.h.streets[D.a.street[index]] || 'Street not matched'}</span>`;
+  tip.style.display = 'block';
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  tip.style.left = (x + 14 + tw > innerWidth ? Math.max(4, x - 14 - tw) : x + 14) + 'px';
+  tip.style.top = (y + 14 + th > innerHeight ? Math.max(4, y - 14 - th) : y + 14) + 'px';
+}
+
+// ---- single published layer: kerb widths, neighbouring slices merged into 0.1 m bins ----
+// The file is stored gzipped and unpacked here, so the download is small on any host. If a host sends it with
+// Content-Encoding: gzip the browser has already unpacked it, so check for the gzip signature (1f 8b) first.
+// (A plain .bin can't start with those bytes: it starts with its header length, always a multiple of 4.)
+const SRC = 'slices_merged_compact.bin.gz';
+async function loadBin(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const buf = await r.arrayBuffer(), sig = new Uint8Array(buf, 0, 2);
+  if (sig[0] !== 0x1f || sig[1] !== 0x8b) return buf;
+  return new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+}
+const T0 = performance.now();
+let tFetch = 0;
+loadBin(SRC).then(buf => {
+  tFetch = performance.now() - T0;
+  D = parseBin(buf);
+  if (D.h.version === 2) expandCompact(D);
+  else {
+    // Version 1 (the pipeline's plain .bin): vertexPositions must be XYZ (size 3); the file stores XY offsets.
+    const nv = D.h.nVertices, p2 = D.a.positions, p3 = new Float32Array(nv * 3);
+    for (let i = 0; i < nv; i++) { p3[i * 3] = p2[i * 2]; p3[i * 3 + 1] = p2[i * 2 + 1]; }
+    D.p3 = p3;
+  }
+  buildData();
+  // 60 % black veil between the basemap canvas and the deck canvas (non-interleaved deck appends its canvas after it)
+  const dim = document.createElement('div');
+  dim.id = 'dim';
+  map.getCanvasContainer().after(dim);
+  overlay = new deck.MapboxOverlay({
+    interleaved: false,
+    layers: [makeLayer()],
+    // First frame drawn with the layer: deck.gl has now uploaded everything to the GPU, so this is the real
+    // "map ready" time. Timings are left on window for timing scripts.
+    onAfterRender: () => {
+      if (window.__timings || !overlay) return;
+      window.__timings = {fetch: tFetch, build: tBuild, ready: performance.now() - T0, bytes: buf.byteLength, indices: !!D.a.indices};
+      status.hidden = true;
+    },
+    onHover: showTip,
+    onClick: showTip   // touch screens have no hover
+  });
+  const tBuild = performance.now() - T0 - tFetch;
+  map.addControl(overlay);
+  drawHist();
+}).catch(e => { status.hidden = false; status.textContent = 'Could not load the map data (' + (e.message || e) + ').'; });
+
+// ---- the legend is the filter: two handles on the colour ramp, histogram of kerb length above it ----
+const track = document.getElementById('track'), rangeEl = document.getElementById('range');
+const hLo = document.getElementById('hLo'), hHi = document.getElementById('hHi'), histEl = document.getElementById('hist');
+const STEP = 0.1, r1 = v => Math.round(v * 10) / 10;
+
+function drawHist() {
+  const cw = histEl.clientWidth, ch = histEl.clientHeight;
+  if (!cw || !D) return;
+  const dpr = window.devicePixelRatio || 1, ctx = histEl.getContext('2d');
+  histEl.width = Math.round(cw * dpr); histEl.height = Math.round(ch * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const h = D.hist, nb = h.length, bw = cw / nb;
+  let max = 0;
+  for (let i = 0; i < nb - 1; i++) max = Math.max(max, h[i]);   // the open-ended last bin is clipped, not scaled to
+  // Two passes: every bar in grey, then the same bars in colour clipped to the selected range, so the coloured
+  // part follows the handles pixel by pixel instead of switching a whole 0.1 m bar at a time.
+  for (const coloured of [false, true]) {
+    ctx.save();
+    if (coloured) { ctx.beginPath(); ctx.rect(lo / TOP * cw, 0, (hi - lo) / TOP * cw, ch); ctx.clip(); }
+    for (let i = 0; i < nb; i++) {
+      const bh = Math.max(h[i] > 0 ? 1 : 0, Math.min(1, h[i] / max) * (ch - 2));
+      ctx.fillStyle = coloured ? `rgb(${rampColor(i / 10 + 0.05).map(Math.round).join(',')})` : '#45454b';
+      ctx.fillRect(i * bw, ch - bh, Math.max(1, bw - 1), bh);
+    }
+    ctx.restore();
+  }
+}
+
+function render() {
+  const all = lo <= 0 && hi >= TOP;
+  hLo.style.left = lo / TOP * 100 + '%'; hHi.style.left = hi / TOP * 100 + '%';
+  document.getElementById('shLo').style.width = lo / TOP * 100 + '%';
+  document.getElementById('shHi').style.width = (1 - hi / TOP) * 100 + '%';
+  hLo.setAttribute('aria-valuenow', r1(lo)); hHi.setAttribute('aria-valuenow', r1(hi));
+  hLo.setAttribute('aria-valuetext', lo.toFixed(1) + ' metres');
+  hHi.setAttribute('aria-valuetext', hi >= TOP ? 'no upper limit' : hi.toFixed(1) + ' metres');
+  document.getElementById('showing').textContent = all ? 'all widths'
+    : lo <= 0 ? `under ${hi.toFixed(1)} m`
+    : hi >= TOP ? `${lo.toFixed(1)} m and over`
+    : `${lo.toFixed(1)} m to ${hi.toFixed(1)} m`;
+  document.getElementById('reset').hidden = all;
+  drawHist();
+  if (overlay && D) overlay.setProps({layers: [makeLayer()]});
+}
+// Dragging is continuous: the handle and the map filter follow the pointer exactly (snap false), and only the
+// two ends are sticky so "all widths" is easy to get back to. The keyboard moves in 0.1 m steps (snap true).
+function setHandle(which, v, snap) {
+  v = Math.min(TOP, Math.max(0, v));
+  if (snap) v = r1(v);
+  else if (v < STEP / 2) v = 0;
+  else if (v > TOP - STEP / 2) v = TOP;
+  if (which === 'lo') lo = Math.min(v, hi - STEP); else hi = Math.max(v, lo + STEP);
+  render();
+}
+
+// Press a handle to drag it from where it was grabbed; press anywhere else on the histogram or ramp and the
+// nearer handle jumps there and follows the drag.
+let dragging = null, grab = 0;
+const xToV = x => { const r = track.getBoundingClientRect(); return (x - r.left) / r.width * TOP; };
+rangeEl.addEventListener('pointerdown', e => {
+  if (e.button) return;
+  const v = xToV(e.clientX);
+  if (e.target === hLo || e.target === hHi) { dragging = e.target === hLo ? 'lo' : 'hi'; grab = v - (dragging === 'lo' ? lo : hi); }
+  else { dragging = v < (lo + hi) / 2 ? 'lo' : 'hi'; grab = 0; }
+  rangeEl.setPointerCapture(e.pointerId);
+  setHandle(dragging, v - grab);
+  e.preventDefault();
+});
+rangeEl.addEventListener('pointermove', e => { if (dragging) setHandle(dragging, xToV(e.clientX) - grab); });
+rangeEl.addEventListener('pointerup', () => { dragging = null; });
+rangeEl.addEventListener('pointercancel', () => { dragging = null; });
+for (const [el, which] of [[hLo, 'lo'], [hHi, 'hi']]) {
+  el.addEventListener('keydown', e => {
+    const cur = which === 'lo' ? lo : hi, big = e.shiftKey ? 5 : 1;
+    const v = {ArrowLeft: cur - STEP * big, ArrowDown: cur - STEP * big, ArrowRight: cur + STEP * big, ArrowUp: cur + STEP * big,
+               PageDown: cur - 1, PageUp: cur + 1, Home: 0, End: TOP}[e.key];
+    if (v === undefined) return;
+    e.preventDefault();
+    setHandle(which, v, true);
+  });
+}
+document.getElementById('reset').addEventListener('click', () => { lo = 0; hi = TOP; render(); });
+
+// ---- collapse: keeps the title, the "showing" line and the ramp; starts collapsed on small screens ----
+const panel = document.getElementById('panel'), collapseBtn = document.getElementById('collapse');
+function setCollapsed(c) {
+  panel.classList.toggle('collapsed', c);
+  collapseBtn.textContent = c ? 'More' : 'Hide';
+  collapseBtn.setAttribute('aria-expanded', !c);
+  collapseBtn.setAttribute('aria-label', c ? 'Show panel details' : 'Hide panel details');
+  drawHist();
+}
+collapseBtn.addEventListener('click', () => setCollapsed(!panel.classList.contains('collapsed')));
+setCollapsed(PHONE);
+window.addEventListener('resize', drawHist);
+render();
+</script>
+</body>
+</html>

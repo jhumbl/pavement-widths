@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How wide is the pavement, right here?</title>
+<style>
+  /* Same palette as the map: near-black ground, translucent dark panels, green accent, red-to-blue width ramp */
+  :root { --bg:#111; --panel:#18181c; --line:#2c2c32; --text:#d6d6d6; --muted:#9a9aa0; --bright:#fff;
+          --green:#4a7043; --green-hi:#55804d; --mint:#b9d4b3;
+          --ramp:linear-gradient(to right, rgb(165,0,38) 0%, rgb(215,48,39) 14.3%, rgb(244,109,67) 21.4%, rgb(253,174,97) 28.6%,
+                 rgb(254,224,139) 35.7%, rgb(230,245,152) 42.9%, rgb(153,213,148) 57.1%, rgb(102,194,165) 71.4%, rgb(50,136,189) 85.7%); }
+  * { box-sizing: border-box; }
+  html { background:var(--bg); }
+  body { margin:0; background:var(--bg); color:var(--text); font:17px/1.7 "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif; }
+  ::selection { background:var(--green); color:#fff; }
+  .wrap { max-width:720px; margin:0 auto; }
+
+  /* top bar: the way back to the map, styled like the map's floating panel */
+  .bar { position:sticky; top:0; z-index:10; background:rgba(17,17,17,.88); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+         border-bottom:1px solid var(--line); }
+  .bar .wrap { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.6rem 1.5rem; max-width:none; }
+  .bar .name { font-size:.85rem; font-weight:600; color:var(--bright); }
+  .bar a { font-size:.85rem; color:var(--mint); text-decoration:none; }
+  .bar a:hover { text-decoration:underline; }
+
+  header.hero { padding:4.5rem 1.5rem 2.5rem; }
+  .kicker { text-transform:uppercase; letter-spacing:.14em; font-size:.75rem; color:var(--mint); margin:0 0 .9rem; }
+  h1 { font-size:2.6rem; line-height:1.12; margin:0 0 1rem; color:var(--bright); letter-spacing:-.01em; font-weight:700; }
+  .standfirst { font-size:1.2rem; color:#bdbdc2; margin:0; }
+  .ramp { height:6px; border-radius:3px; background:var(--ramp); margin:2rem 0 .6rem; }
+  .date { font-size:.85rem; color:var(--muted); margin:0; }
+
+  main { padding:1rem 1.5rem 4rem; }
+  h2 { color:var(--bright); font-size:1.45rem; line-height:1.3; margin:3.25rem 0 .9rem; }
+  h3 { color:var(--bright); font-size:1.1rem; margin:2rem 0 .5rem; }
+  p { margin:0 0 1.15rem; }
+  strong, em { color:#ececec; }
+  a { color:var(--mint); }
+  ul, ol { padding-left:1.25rem; margin:0 0 1.15rem; }
+  li { margin-bottom:.45rem; }
+  li::marker { color:var(--green-hi); }
+  code { font:.84em ui-monospace, "Cascadia Code", Consolas, monospace; color:#e8e8e8; background:#232328; border:1px solid var(--line);
+         padding:1px 5px; border-radius:4px; }
+
+  /* figures are light plots, so they sit on the page as plates */
+  figure { margin:2.25rem 0; }
+  figure.wide { margin-left:-80px; margin-right:-80px; }
+  figure img { display:block; width:100%; height:auto; border-radius:8px; background:#fff; box-shadow:0 2px 16px rgba(0,0,0,.5); }
+  figcaption { font-size:.88rem; line-height:1.55; color:var(--muted); margin-top:.7rem; }
+  figure.wide figcaption { padding:0 80px; }
+  figcaption b { color:var(--text); }
+  figcaption code { font-size:.92em; }
+
+  table { border-collapse:separate; border-spacing:0; width:100%; font-size:.9rem; line-height:1.5; margin:.5rem 0 1.5rem;
+          background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  th, td { text-align:left; padding:.55rem .85rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr:last-child td { border-bottom:0; }
+  th { color:var(--bright); font-weight:600; background:#1e1e23; }
+  th.n, td.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+  .steps { counter-reset:s; list-style:none; padding:0; }
+  .steps li { counter-increment:s; padding-left:2.3em; position:relative; }
+  .steps li::before { content:counter(s); position:absolute; left:0; top:.25em; width:1.55em; height:1.55em; border-radius:50%;
+                      background:var(--green); color:#fff; font-weight:600; font-size:.78em; line-height:1.55em; text-align:center; }
+
+  .cta { margin:2rem 0 .5rem; }
+  .cta a { display:inline-block; font-weight:600; font-size:.98rem; line-height:1; padding:.8rem 1.15rem; border-radius:6px;
+           background:var(--green); color:#fff; text-decoration:none; }
+  .cta a:hover { background:var(--green-hi); }
+  a:focus-visible, .cta a:focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
+
+  .art canvas { display:block; width:100%; aspect-ratio:860 / 250; border-radius:8px; cursor:crosshair;
+                touch-action:none; background:#111; box-shadow:0 2px 16px rgba(0,0,0,.5); }
+  .note { font-size:.85rem; color:var(--muted); margin-top:3.5rem; padding-top:1.25rem; border-top:1px solid var(--line); }
+  @media (max-width:900px) { figure.wide { margin-left:0; margin-right:0; } figure.wide figcaption { padding:0; } }
+  @media (max-width:560px) { h1 { font-size:2rem; } body { font-size:16px; } header.hero { padding:3rem 1.25rem 2rem; }
+                             main { padding:1rem 1.25rem 3rem; } .bar .wrap { padding:.55rem 1.25rem; } .bar .name { display:none; } }
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Site">
+  <div class="wrap">
+    <span class="name">Pavement widths, Westminster</span>
+    <a href="../">&larr; Back to the map</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="kicker">Method &middot; Ordnance Survey data</p>
+    <h1>How wide is the pavement, right here?</h1>
+    <p class="standfirst">Measuring every metre of kerb in Westminster from Ordnance Survey's pavement polygons.</p>
+    <div class="ramp" aria-hidden="true"></div>
+    <p class="date">November 2026</p>
+  </div>
+</header>
+
+<main>
+<div class="wrap">
+
+<p>Pavement space in Westminster is in constant demand. Almost everything we put on the footway, or allow others to
+  put there, takes some of it, and many everyday decisions come down to one question: how wide is the pavement at
+  this exact spot? A width for every metre of kerb in the borough helps answer it, for questions like:</p>
+
+<ul>
+  <li><strong>Placing street furniture:</strong> can a cycle hangar, EV charger, bench or hire-bike bay go here and
+    still leave enough room to walk past?</li>
+  <li><strong>Licensing:</strong> will a café's tables and chairs, or a scaffold, leave a usable footway?</li>
+  <li><strong>Accessibility:</strong> where are the pinch points too narrow for a wheelchair or a double buggy?</li>
+  <li><strong>Busy streets:</strong> which footways struggle with crowds near stations, theatres and shops?</li>
+  <li><strong>Prioritising schemes:</strong> which streets most need widening, backed by borough-wide evidence?</li>
+  <li><strong>Responding to change:</strong> if social distancing is ever needed again, which footways allow two
+    metres between people?</li>
+</ul>
+
+<p>For all of these, an average width per street is not much use. The question is local: <em>is there two metres
+  clear at this bit of kerb?</em> Width classes ("narrow / medium / wide") and per-street averages both hide exactly
+  the pinch points that matter.</p>
+
+<p>So the goal here was a continuous width at every metre of kerb in Westminster, drawn on the real
+  pavement geometry rather than on a simplified centreline. The end result is about 617,000 slices of pavement, each
+  about a metre long along the kerb, each carrying its own width. This post walks through how they are made, step
+  by step.</p>
+
+<p class="cta"><a href="../">Explore the pavement widths map →</a></p>
+
+<h2>The data</h2>
+
+<p>The source is OS National Geographic Database (NGD) <em>Road Track or Path</em>, a layer of surveyed polygons
+  that splits the street into Road, Pavement, Central Reservation, Traffic Calming, Cycle Way and a dozen other
+  classes.</p>
+
+<table>
+  <tr><th>Class</th><th class="n">Polygons in Westminster</th></tr>
+  <tr><td>Road</td><td class="n">7,649</td></tr>
+  <tr><td>Pavement</td><td class="n">4,920</td></tr>
+  <tr><td>Path</td><td class="n">2,521</td></tr>
+  <tr><td>Central Reservation</td><td class="n">1,338</td></tr>
+  <tr><td>Traffic Calming</td><td class="n">668</td></tr>
+  <tr><td>others (Transport Curtilage, Shared Use Carriageway, Cycle Way …)</td><td class="n">742</td></tr>
+</table>
+
+<p>The Pavement class covers 190 ha. I measure only roadside pavement: <code>Pavement</code>
+  and <code>Pavement And Steps</code>. Paths through parks and squares are a different problem and are left out
+  for now.</p>
+
+<figure>
+  <img src="fig/01_raw.png" alt="Raw OS NGD polygons for a Belgravia block: grey roads, beige pavements">
+  <figcaption><b>Raw NGD polygons, Belgravia.</b> The pavement polygons follow the building line exactly, which
+    means they include every front step and porch threshold.</figcaption>
+</figure>
+
+<h2>Step 1: clean up the data</h2>
+
+<p>The OS polygons are drawn for mapping, not for measuring, so a few things are tidied up before any widths are
+  taken:</p>
+
+<ul>
+  <li><strong>Porches and front steps removed.</strong> The pavement polygon runs right up to the building line,
+    which on a Victorian terrace steps in and out at every front door. Left in, these would make the pavement look a metre
+    wider every few metres. They're cut out from the building side, so the kerb edge is never touched.</li>
+  <li><strong>Seams joined.</strong> OS splits continuous pavement at arbitrary points. These are merged so that a
+    measurement doesn't stop at a line nobody can see on the ground.</li>
+  <li><strong>Small holes filled.</strong> Tree pits, kiosks and cellar lights leave small holes in the polygons.
+    These are filled for the measurement, while larger holes (real city blocks) stay.</li>
+</ul>
+
+<figure>
+  <img src="fig/02_porches.png" alt="A terrace street with small red rectangles along the building line marking removed porches">
+  <figcaption><b>Removed porches (red).</b> 4,372 across the borough, about 1% of the pavement area.</figcaption>
+</figure>
+
+<h2>Step 2: find the kerb</h2>
+
+<p>Every width here is measured <em>from the kerb</em>, so the kerb has to be found first. It is the part of a
+  pavement's boundary that touches the carriageway. Using Road polygons alone leaves
+  171 pavements (2.2 ha) with no kerb at all. Most of them are on the Embankment, where a Cycle Way polygon sits
+  between the pavement and the road. The final kerb is the boundary shared with any of <strong>Road, Cycle Way,
+  Traffic Calming, Central Reservation or Shared Use Carriageway</strong>. With that change only 38 polygons have
+  no kerb, and those get a skeleton fallback (twice the distance to the medial axis).</p>
+
+<p>Each kerb line is then sampled every metre. The spacing is adjusted per line so the samples are evenly spaced
+  end to end. At each sample the tangent comes from the points ±0.5 m either side, and the normal points into the
+  pavement.</p>
+
+<figure>
+  <img src="fig/03_kerb_samples.png" alt="Kerb lines in black with dots every metre and short blue normal ticks pointing into the pavement">
+  <figcaption><b>Kerb lines, 1 m samples and normals.</b> 613 km of kerb across the borough becomes 618k samples.</figcaption>
+</figure>
+
+<h2>Step 3: a cross-section at every metre</h2>
+
+<p>From each sample a ray goes out along the normal, up to 25 m, and is clipped to the pavement polygon. One
+  detail matters a lot here. A ray that leaves the polygon and re-enters it (across a light well, or a jog in the
+  building line) would come back as several pieces. Only the piece that starts at the kerb point is kept, which I
+  call the <strong>first-exit rule</strong>. Rays shorter than 0.2 m are rejected as slivers.</p>
+
+<figure class="wide">
+  <img src="fig/04_rays.png" alt="Cross-section rays from every kerb sample, coloured from red (narrow) to blue (wide)">
+  <figcaption><b>One cross-section per metre of kerb.</b> On a straight terrace pavement the rays are clean and
+    their lengths are the width. Corners need one more step.</figcaption>
+</figure>
+
+<h2>Corners</h2>
+
+<p>Round a curved kerb the rays point toward the centre of the curve and run diagonally across the widening
+  pavement, so on their own they would overstate the width. So each sample also measures the
+  <strong>radial width</strong>: the distance to the nearest point on the back of the pavement, looking within
+  ±45° of the ray. On a straight pavement the two are the same; at a corner the radial is shorter. The width
+  used is the smaller of the two.</p>
+
+<figure class="wide">
+  <img src="fig/12_corner_fan.png" alt="A gently curving corner on North Carriage Drive, Hyde Park; pavement slices fan evenly round the curve from kerb to back of pavement, all a similar green">
+  <figcaption><b>North Carriage Drive, Hyde Park.</b> Both the kerb and the back of the pavement curve gently, so
+    the slices fan evenly round the corner, and the width stays between about 4.5 and 4.9 m all the way
+    round.</figcaption>
+</figure>
+
+<h2>Step 4: rolling minima</h2>
+
+<p>A width at one point can be misleading if 2 m further along there is a pinch. So each kerb line also gets a
+  rolling minimum over 2 m and 5 m windows: <code>width_min_2m</code> and <code>width_min_5m</code>. The windows
+  never cross a break in the kerb. For siting, the 5 m minimum is the honest number, since a hangar is about that
+  long.</p>
+
+<figure class="wide">
+  <img src="fig/08_profile.png" alt="Line chart along 360 m of Chester Row: grey raw width with regular spikes, blue cleaned width flat around 1.7 to 2 m, dashed rolling minimum just below">
+  <figcaption><b>Width along 360 m of Chester Row.</b> Grey: the ray on the raw polygon, with a porch spike every
+    5–6 m. Blue: <code>width_m</code> after porch removal and corner capping. Dashed: the 5 m rolling minimum. The
+    two plateaus near 4 m are genuine widenings at junctions.</figcaption>
+</figure>
+
+<h2>Step 5: Voronoi slices</h2>
+
+<figure class="wide art">
+  <canvas id="vz-art" role="img" aria-label="Voronoi diagram in shades of blue; the pointer adds a point"></canvas>
+  <figcaption>Move over the picture: the pointer is one more point. Click to leave one behind.</figcaption>
+</figure>
+
+<p>A width per kerb point is a line, and a map of 618k lines is unreadable. What the map needs is area: every
+  square metre of pavement should carry the width of the kerb it belongs to. The tool for that is a
+  <strong>Voronoi diagram</strong>.</p>
+
+<p>Start with a set of points. A point's Voronoi cell is every location that is closer to that point than to
+  any other. Here the points are the kerb samples, one per metre, so each cell is the patch of pavement whose
+  nearest kerb metre is that sample. Three properties make this a good fit:</p>
+
+<ul>
+  <li><strong>No gaps, no overlaps.</strong> The cells partition the plane, so once they are clipped to the
+    pavement polygon every bit of pavement belongs to exactly one sample.</li>
+  <li><strong>The edges are perpendicular bisectors.</strong> The boundary between two neighbouring samples is
+    the line halfway between them, at right angles to the gap. Along a straight kerb that gives strips 1 m wide,
+    square to the kerb, which is what you would draw by hand. Round a convex corner the bisectors fan out and meet
+    near the centre of the curve. In an inside corner they pinch together.</li>
+  <li><strong>The real edges survive.</strong> Each cell is intersected with the OS polygon, so the back of
+    each slice is the actual building line and holes like tree pits stay cut out. Where the pavement opens into a
+    forecourt, the cells just reach further back, so wide areas are covered too.</li>
+</ul>
+
+<p>Each slice then takes its sample's width, so colouring the slices colours the pavement.</p>
+
+<p>Voronoi is used once more, for the 38 pavements that touch no carriageway and so have no kerb to sample.
+  For these, points are placed every metre round the polygon's edge and their Voronoi diagram is taken. The
+  cell edges that fall inside the polygon trace its centreline, also called the medial axis or skeleton. After
+  pruning the short spurs, the width at each skeleton point is twice its distance to the nearest edge.</p>
+
+<figure class="wide">
+  <img src="fig/07_slices.png" alt="Belgravia block with pavements cut into thin slices coloured by width; junction corners in green and blue">
+  <figcaption><b>The final layer.</b> Each slice carries its sample's width. The original polygon is the only mask,
+    so wide forecourts and squares are covered by their nearest kerb cells and nothing is left unmeasured. 616,950
+    slices cover 191.34 ha, which is 100 % of the walkable area.</figcaption>
+</figure>
+
+<figure class="wide">
+  <img src="fig/07b_slices_zoom.png" alt="Close-up of 1 m slices along a terrace, with the kerb samples as dots">
+  <figcaption><b>Close up.</b> One slice per kerb metre. The corner at top right fans out because its cells all
+    meet near the centre of curvature.</figcaption>
+</figure>
+
+<h2>What Westminster looks like</h2>
+
+<p class="cta"><a href="../">Explore the pavement widths map →</a></p>
+
+<figure class="wide">
+  <img src="fig/10_hist.png" alt="Histogram of widths, peaking around 2 to 3 m, with a long tail to 10 m">
+  <figcaption><b>Distribution of <code>width_m</code>.</b> p10 1.56 m, median 2.84 m, p90 5.41 m. About 19 % of
+    kerb metres are under 2 m and 9 % are under 1.5 m. That is the stock where a 2 m object cannot go without
+    blocking the footway.</figcaption>
+</figure>
+
+<p>About 3 % of samples read 8 m or more. I checked them one by one: most are real. Oxford Street, Whitehall,
+  Constitution Hill, the Embankment and Portman Square all have rays that end at a building or park edge 8–25 m
+  from the kerb. The artefacts (junction splays, islands with no back edge, rays hitting the 25 m cap) are about
+  half a percent of samples.</p>
+
+<h2>Honest limits</h2>
+<ul>
+  <li>These are <strong>kerb-to-back-of-footway</strong> widths, not clear widths. Lamp columns, trees, bins and
+    cycle stands are not in the polygons. NGD has a street-light layer that could be subtracted later.</li>
+  <li>Expect ±0.2–0.3 m. OS's stated absolute accuracy in urban areas is ±0.4 m.</li>
+  <li>Corners are bounded, not solved. A corner reads the distance to the nearest building face within 45°, which
+    is a fair answer to "how much room is there at this kerb point" but not a unique one.</li>
+  <li>Paths, parks and squares not typed as Pavement are excluded. The 38 pavements with no kerb use a skeleton
+    estimate.</li>
+</ul>
+
+<h2>Recap</h2>
+<ol class="steps">
+  <li>Pull NGD Road Track or Path; keep Pavement and Pavement And Steps.</li>
+  <li>Cut porches and thresholds from the building side; never touch the kerb.</li>
+  <li>Dissolve seams, fill holes ≤ 100 m², find the kerb against five carriageway-like classes.</li>
+  <li>Sample every metre; cast a normal ray with the first-exit rule.</li>
+  <li>Width = min(ray, nearest back edge within ±45°); add 2 m and 5 m rolling minima.</li>
+  <li>Cut each polygon into Voronoi slices of its kerb samples; colour by width.</li>
+</ol>
+
+<p class="note">Contains OS data © Crown copyright and database rights 2026. Boundary: Office for National Statistics,
+  Open Government Licence v3.0. Figures are drawn from the pipeline outputs; widths are a derived product,
+  not survey measurements, and errors are mine.</p>
+
+</div>
+</main>
+
+<script src="vendor/d3.min.js"></script>
+<script>
+(function () {
+  const cv = document.getElementById('vz-art');
+  if (!cv || !window.d3) return;
+  const ctx = cv.getContext('2d');
+  let rnd = 7;                                   // small seeded RNG so the picture is the same on every load
+  const rand = () => (rnd = (rnd * 16807) % 2147483647) / 2147483647;
+  const pts = [];
+  for (let i = 0; i < 70; i++) pts.push({ x: rand(), y: rand(), v: 0.12 + rand() * 0.6 });
+  let W = 0, H = 0, mouse = null;
+  // the map's width ramp (narrow red -> wide blue), sampled at t in 0..1
+  const STOPS = [[0, [165, 0, 38]], [1/6, [215, 48, 39]], [1.5/6, [244, 109, 67]], [2/6, [253, 174, 97]], [2.5/6, [254, 224, 139]],
+                 [3/6, [230, 245, 152]], [4/6, [153, 213, 148]], [5/6, [102, 194, 165]], [1, [50, 136, 189]]];
+  function ramp(t) {
+    for (let i = 1; i < STOPS.length; i++) if (t <= STOPS[i][0]) {
+      const [t0, c0] = STOPS[i - 1], [t1, c1] = STOPS[i], f = (t - t0) / (t1 - t0);
+      return `rgb(${c0.map((c, k) => Math.round(c + (c1[k] - c) * f)).join(',')})`;
+    }
+    return `rgb(${STOPS[STOPS.length - 1][1].join(',')})`;
+  }
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw();
+  }
+  function draw() {
+    if (!W) return;
+    const all = mouse ? pts.concat([mouse]) : pts;
+    const del = d3.Delaunay.from(all, p => p.x * W, p => p.y * H);
+    const vor = del.voronoi([0, 0, W, H]);
+    const R = 0.22 * W;
+    for (let i = 0; i < all.length; i++) {
+      const p = all[i];
+      let t = p.v;
+      if (mouse) {
+        const d = Math.hypot((p.x - mouse.x) * W, (p.y - mouse.y) * H);
+        t = Math.min(0.97, t + 0.55 * Math.exp(-(d * d) / (R * R)));
+      }
+      if (p === mouse) t = 1;
+      ctx.beginPath(); vor.renderCell(i, ctx);
+      ctx.fillStyle = ramp(t); ctx.fill();
+    }
+    ctx.beginPath(); del.render(ctx);                       // Delaunay triangles, faint
+    ctx.strokeStyle = 'rgba(17,17,17,0.18)'; ctx.lineWidth = 0.7; ctx.stroke();
+    ctx.beginPath(); vor.render(ctx);                       // Voronoi edges, the map's background colour
+    ctx.strokeStyle = 'rgba(17,17,17,0.9)'; ctx.lineWidth = 1.4; ctx.stroke();
+    ctx.fillStyle = 'rgba(17,17,17,0.85)';
+    for (const p of pts) { ctx.beginPath(); ctx.arc(p.x * W, p.y * H, 2.2, 0, Math.PI * 2); ctx.fill(); }
+    if (mouse) {
+      ctx.beginPath(); ctx.arc(mouse.x * W, mouse.y * H, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = '#111'; ctx.stroke();
+    }
+  }
+  function at(e) {
+    const r = cv.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height, v: 0.3 + Math.random() * 0.5 };
+  }
+  // static picture: it only redraws when the pointer moves, leaves or clicks
+  cv.addEventListener('pointermove', e => { mouse = at(e); draw(); });
+  cv.addEventListener('pointerleave', () => { mouse = null; draw(); });
+  cv.addEventListener('pointerdown', e => {
+    pts.push(at(e)); if (pts.length > 260) pts.splice(70, 1);   // keep the original 70, recycle the oldest added
+    draw();
+  });
+  window.addEventListener('resize', resize);
+  resize();
+})();
+</script>
+</body>
+</html>
